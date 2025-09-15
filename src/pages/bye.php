@@ -1,4 +1,3 @@
 <?php
 
-$response->setContent('Goodbye!');
-$response->send();
+echo 'Nos vemos fiera!';
