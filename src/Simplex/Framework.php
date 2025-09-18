@@ -2,6 +2,7 @@
 
 namespace Simplex;
 
+use Symfony\Component\EventDispatcher\EventDispatcher;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Controller\ArgumentResolverInterface;
@@ -12,6 +13,7 @@ use Symfony\Component\Routing\Matcher\UrlMatcherInterface;
 class Framework
 {
     public function __construct(
+        private EventDispatcher $dispatcher,
         private UrlMatcherInterface $matcher,
         private ControllerResolverInterface $controllerResolver,
         private ArgumentResolverInterface $argumentResolver,
@@ -28,11 +30,17 @@ class Framework
             $controller = $this->controllerResolver->getController($request);
             $arguments = $this->argumentResolver->getArguments($request, $controller);
 
-            return call_user_func_array($controller, $arguments);
+            $response = call_user_func_array($controller, $arguments);
         } catch (ResourceNotFoundException $exception) {
-            return new Response('Sorry, page Not Found', 404);
+            $response = new Response('Not Found', 404);
         } catch (\Exception $exception) {
-            return new Response('An error occurred', 500);
+            $description = $exception->getMessage() ?? 'Internal Server Error';
+            $response = new Response(sprintf('An error occurred: %s', $description), 500);
         }
+
+        // dispatch a response event
+        $this->dispatcher->dispatch(new ResponseEvent($response, $request), 'response');
+
+        return $response;
     }
 }

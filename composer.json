@@ -3,7 +3,8 @@
         "php": "^8.0",
         "symfony/http-foundation": "^7.2",
         "symfony/routing": "^7.2",
-        "symfony/http-kernel": "^7.3"
+        "symfony/http-kernel": "^7.3",
+        "symfony/event-dispatcher": "^7.3"
     },
     "autoload": {
       "psr-4": { "": "src/" }
