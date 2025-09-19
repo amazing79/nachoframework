@@ -2,3 +2,4 @@ vendor
 .idea
 cov
 .phpunit.result.cache
+web/.htaccess
