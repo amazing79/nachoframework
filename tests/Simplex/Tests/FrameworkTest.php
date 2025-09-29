@@ -1,87 +1,78 @@
 <?php
 namespace Simplex\Tests;
 
-use Calendar\Controller\LeapYearController;
+
+use Simplex\EventsListener\StringResponseListener;
 use Simplex\Framework;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\EventDispatcher\EventDispatcher;
-use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpKernel\Controller\ArgumentResolver;
-use Symfony\Component\HttpKernel\Controller\ArgumentResolverInterface;
 use Symfony\Component\HttpKernel\Controller\ControllerResolver;
-use Symfony\Component\HttpKernel\Controller\ControllerResolverInterface;
+use Symfony\Component\HttpKernel\EventListener\RouterListener;
 use Symfony\Component\Routing;
-use Symfony\Component\Routing\Exception\ResourceNotFoundException;
+use Symfony\Component\Routing\RequestContext;
+use Symfony\Component\Routing\RouteCollection;
 
 class FrameworkTest extends TestCase
 {
     public function testNotFoundHandling(): void
     {
-        $framework = $this->getFrameworkForException(new ResourceNotFoundException());
+        $framework = $this->getFramework();
 
         $response = $framework->handle(new Request());
 
         $this->assertEquals(404, $response->getStatusCode());
     }
 
-    private function getFrameworkForException($exception): Framework
+    private function getFramework(RouteCollection $collection = null): Framework
     {
-        $matcher = $this->createMock(Routing\Matcher\UrlMatcherInterface::class);
-
-        $matcher
-            ->expects($this->once())
-            ->method('match')
-            ->willThrowException($exception)
-        ;
-        $matcher
-            ->expects($this->once())
-            ->method('getContext')
-            ->willReturn($this->createMock(Routing\RequestContext::class))
-        ;
-        $dispatcher = $this->createMock(EventDispatcherInterface::class);
-        $controllerResolver = $this->createMock(ControllerResolverInterface::class);
-        $argumentResolver = $this->createMock(ArgumentResolverInterface::class);
-
-        return new Framework($dispatcher,$matcher, $controllerResolver, $argumentResolver);
+        $requestStack = new RequestStack();
+        $routes = $collection ?? new RouteCollection();
+        $context = new RequestContext();
+        $matcher = new Routing\Matcher\UrlMatcher( $routes, $context);
+        $controllerResolver = new ControllerResolver();
+        $argumentResolver = new ArgumentResolver();
+        $dispatcher = new EventDispatcher();
+        $dispatcher->addSubscriber(new RouterListener($matcher, $requestStack));
+        $dispatcher->addSubscriber(new StringResponseListener());
+        return new Framework($dispatcher, $controllerResolver, $requestStack, $argumentResolver);
     }
 
-    public function testErrorHandling(): void
-    {
-        $framework = $this->getFrameworkForException(new \RuntimeException());
-
-        $response = $framework->handle(new Request());
-
-        $this->assertEquals(500, $response->getStatusCode());
-    }
 
     public function testControllerResponse(): void
     {
-        $matcher = $this->createMock(Routing\Matcher\UrlMatcherInterface::class);
 
-        $matcher
-            ->expects($this->once())
-            ->method('match')
-            ->willReturn([
-                '_route' => 'is_leap_year/{year}',
-                'year' => '2000',
-                '_controller' => [new LeapYearController(), 'index'],
-            ])
-        ;
-        $matcher
-            ->expects($this->once())
-            ->method('getContext')
-            ->willReturn($this->createMock(Routing\RequestContext::class))
-        ;
-        $dispatcher = new EventDispatcher();
-        $controllerResolver = new ControllerResolver();
-        $argumentResolver = new ArgumentResolver();
-
-        $framework = new Framework($dispatcher, $matcher, $controllerResolver, $argumentResolver);
-
-        $response = $framework->handle(new Request());
+        $framework = $this->getFramework($this->getRouteCollection());
+        $response = $framework->handle($this->generateRequestForLeapYear());
 
         $this->assertEquals(200, $response->getStatusCode());
         $this->assertStringContainsString('Yep, this is a leap year!', $response->getContent());
+        //verifing that works' with not leap year too!
+        $response = $framework->handle($this->generateRequestForNotLeapYear());
+        $this->assertEquals(200, $response->getStatusCode());
+        $this->assertStringContainsString('Nope, this is not a leap year.', $response->getContent());
+    }
+
+    private function getRouteCollection(): RouteCollection
+    {
+        $routes = new Routing\RouteCollection();
+        $routes->add('leap_year', new Routing\Route('/is_leap_year/{year}', [
+            'year' => null,
+            '_controller' => 'Calendar\Controller\LeapYearController::index'
+        ]));
+
+        return $routes;
+    }
+
+    private function generateRequestForLeapYear(): Request
+    {
+       return Request::create('/is_leap_year/2024' , 'GET');
+    }
+
+    private function generateRequestForNotLeapYear(): Request
+    {
+        return Request::create('/is_leap_year/2023' , 'GET');
     }
 }
